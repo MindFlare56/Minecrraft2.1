@@ -4,10 +4,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnityEngine;
 
 namespace Assets.Scripts.Controllers.Factories
 {
-    public static class BlockTypesFactory
+    [Serializable]
+    public class BlockTypesFactory
     {
 
         public enum BlockTypeKey: byte
@@ -21,7 +23,7 @@ namespace Assets.Scripts.Controllers.Factories
         }
 
         public static Dictionary<BlockTypeKey, BlockTypesModel> MakeAll()
-        {
+        {                        
             return new Dictionary<BlockTypeKey, BlockTypesModel> {
                 {BlockTypeKey.Air, MakeAir()},
                 {BlockTypeKey.Bedrock, MakeBedrock()},
@@ -32,21 +34,28 @@ namespace Assets.Scripts.Controllers.Factories
             };
         }
 
+        private static Sprite FindSprite(string name)
+        {
+            return GameObject.Find(name).GetComponent<SpriteRenderer>().sprite;
+        }
+
         private static BlockTypesModel MakeBedrock()
         {
             return new BlockTypesModel {
                 BlockName = "Bedrock",
                 IsSolid = true,
-                Textures = 9
+                Textures = 9,
+                Icon = FindSprite("bedrock_icon")
             };
-        }
+        }        
 
         private static BlockTypesModel MakeStone()
         {
             return new BlockTypesModel {
                 BlockName = "Stone",
                 IsSolid = true,
-                Textures = 0
+                Textures = 0,
+                Icon = FindSprite("stone_icon")
             };
         }
 
@@ -60,7 +69,8 @@ namespace Assets.Scripts.Controllers.Factories
                 LeftFaceTexture = 2,
                 RightFaceTexture = 2,
                 TopFaceTexture = 7,
-                BottomFaceTexture = 1
+                BottomFaceTexture = 1,
+                Icon = FindSprite("grass_icon")
             };
         }
 
@@ -69,7 +79,8 @@ namespace Assets.Scripts.Controllers.Factories
             return new BlockTypesModel {
                 BlockName = "Sand",
                 IsSolid = true,
-                Textures = 10
+                Textures = 10,
+                Icon = FindSprite("sand_icon")
             };
         }
 
@@ -78,7 +89,8 @@ namespace Assets.Scripts.Controllers.Factories
             return new BlockTypesModel {
                 BlockName = "Dirt",
                 IsSolid = true,
-                Textures = 1
+                Textures = 1,
+                Icon = FindSprite("dirt_icon")
             };
         }
 

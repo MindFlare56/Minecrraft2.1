@@ -7,6 +7,7 @@ using UnityEngine;
 
 namespace Assets.Scripts.Models
 {
+    
     public class BlockTypesModel
     {
 
@@ -18,7 +19,7 @@ namespace Assets.Scripts.Models
         private int bottomFaceTexture = 0;
         private int leftFaceTexture = 0;
         private int rightFaceTexture = 0;
-        private int textures = 0;
+        private int textures = 0;        
         [SerializeField] private Sprite icon;
 
         // Back, Front, Top, Bottom, Left, Right

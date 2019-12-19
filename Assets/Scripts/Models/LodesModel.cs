@@ -7,6 +7,7 @@ using static Assets.Scripts.Controllers.Factories.BlockTypesFactory;
 
 namespace Assets.Scripts.Models
 {
+    [Serializable]
     class LodesModel
     {
 

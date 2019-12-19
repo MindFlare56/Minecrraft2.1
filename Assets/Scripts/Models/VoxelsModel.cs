@@ -10,7 +10,7 @@ public static class VoxelModel
     public static readonly int WorldSizeInChunks = 100;
     public static float minLightLevel = 0.1f;
     public static float maxLightLevel = 0.9f;
-    public static readonly int ViewDistanceInChunks = 5;
+    public static readonly int ViewDistanceInChunks = 15;
     public static readonly int TextureAtlasSizeInBlocks = 4;
 
     public static int WorldSizeInVoxels

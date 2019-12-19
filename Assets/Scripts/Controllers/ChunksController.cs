@@ -1,40 +1,63 @@
-﻿using Assets.Scripts.Models;
+﻿using Assets.Scripts.Controllers.Factories;
+using Assets.Scripts.Models;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using static Assets.Scripts.Controllers.Factories.BlockTypesFactory;
 
 namespace Assets.Scripts.Controllers
-{
+{   
     public class ChunksController: MonoBehaviour
     {
 
         private Material material;
-        private ChunkModel[,] chunks = new ChunkModel[VoxelModel.WorldSizeInChunks, VoxelModel.WorldSizeInChunks];
+        private ChunkModel[,] chunks;
         private List<ChunkCoord> activeChunks = new List<ChunkCoord>();
         private BiomeModel biome;
         private Transform player;
         private Vector3 spawnPosition;
-        private Dictionary<BlockTypeKey, BlockTypesModel> blocktypes = MakeAll();
+        private Dictionary<BlockTypeKey, BlockTypesModel> blocktypes;
         private ChunkCoord playerChunkCoord;
         private ChunkCoord playerLastChunkCoord;
 
         internal ChunksController Build(Material material)
         {
-            biome = CreateBiome();
+            chunks = new ChunkModel[VoxelModel.WorldSizeInChunks, VoxelModel.WorldSizeInChunks];
+            blocktypes = MakeAll();
+            biome = CreateBiome();            
             spawnPosition = new Vector3((VoxelModel.WorldSizeInChunks * VoxelModel.ChunkWidth) / 2f, VoxelModel.ChunkHeight - 50f, (VoxelModel.WorldSizeInChunks * VoxelModel.ChunkWidth) / 2f);
             Material = material;
             player = GameObject.Find("Player").GetComponent<PlayerModel>().transform;
+            playerLastChunkCoord = GetChunkCoordFromVector3(player.position);
             return this;
         }
 
+
+
         private void Start()
-        {            
-            playerLastChunkCoord = GetChunkCoordFromVector3(player.position);
+        {   
+            
         }
 
-        private BiomeModel CreateBiome()
+        private void Update()
         {
-            return new BiomeModel();
+            if (Chunks != null) {
+                playerChunkCoord = GetChunkCoordFromVector3(player.position);
+            }                        
+        }
+
+        internal ChunkModel GetChunkFromVector3(Vector3 position)
+        {
+            int x = Mathf.FloorToInt(position.x / VoxelModel.ChunkWidth);
+            int z = Mathf.FloorToInt(position.z / VoxelModel.ChunkWidth);
+            return chunks[x, z];
+        }
+
+        internal ChunkModel GetChunkFromVector3(Vector3Int position)
+        {
+            int x = Mathf.FloorToInt(position.x / VoxelModel.ChunkWidth);
+            int z = Mathf.FloorToInt(position.z / VoxelModel.ChunkWidth);
+            return chunks[x, z];
         }
 
         public BlockTypeKey GetVoxel(Vector3 voxelPosition)
@@ -43,6 +66,62 @@ namespace Assets.Scripts.Controllers
             blockTypeKey = ChangeBlockTypeByHeight(voxelPosition, blockTypeKey);
             blockTypeKey = RandomizeTextureHorizontaly(voxelPosition, blockTypeKey);
             return blockTypeKey;
+        }
+
+        public bool CheckForVoxel(float x, float y, float z)
+        {
+            int xCheck = Mathf.FloorToInt(x);
+            int yCheck = Mathf.FloorToInt(y);
+            int zCheck = Mathf.FloorToInt(z);
+            int xChunk = xCheck / VoxelModel.ChunkWidth;
+            int zChunk = zCheck / VoxelModel.ChunkWidth;
+            xCheck -= (xChunk * VoxelModel.ChunkWidth);
+            zCheck -= (zChunk * VoxelModel.ChunkWidth);
+            return Blocktypes[chunks[xChunk, zChunk].VoxelMap[xCheck, yCheck, zCheck]].IsSolid;
+        }
+
+        public bool CheckForVoxel(Vector3 position)
+        {
+            return CheckForVoxel(position.x, position.y, position.z);
+        }              
+
+        internal void GenerateWorld()
+        {
+            for (int x = (VoxelModel.WorldSizeInChunks / 2) - VoxelModel.ViewDistanceInChunks; x < (VoxelModel.WorldSizeInChunks / 2) + VoxelModel.ViewDistanceInChunks; x++) {
+                for (int z = (VoxelModel.WorldSizeInChunks / 2) - VoxelModel.ViewDistanceInChunks; z < (VoxelModel.WorldSizeInChunks / 2) + VoxelModel.ViewDistanceInChunks; z++) {
+                    CreateNewChunk(x, z);
+                }
+            }
+            player.position = spawnPosition;
+            IsReady = true;
+        }
+
+        internal BlockTypeKey TryDestroyingBlock(Vector3Int voxelPosition)
+        {
+            var chunk = GetChunkFromVector3(voxelPosition);
+            if (chunk != null) {
+                return chunk.EditVoxelAtPosition(voxelPosition, BlockTypeKey.Air);
+            }
+            return BlockTypeKey.Air;
+        }
+
+        internal void TryAddingBlock(Vector3Int cursorPosition, BlockTypeKey blockType)
+        {
+            var chunk = GetChunkFromVector3(cursorPosition);
+            if (chunk != null) {
+                chunk.EditVoxelAtPosition(cursorPosition, blockType);
+            }                
+        }
+
+        private void CreateNewChunk(int x, int z)
+        {
+            Chunks[x, z] = new ChunkModel(new ChunkCoord(x, z), this);
+            ActiveChunks.Add(new ChunkCoord(x, z));
+        }
+
+        private BiomeModel CreateBiome()
+        {
+            return new BiomeModel();
         }
 
         private BlockTypeKey RandomizeTextureHorizontaly(Vector3 voxelPosition, BlockTypeKey blockTypeKey)
@@ -80,15 +159,7 @@ namespace Assets.Scripts.Controllers
         private int GenerateRandomTerrainHeight(Vector3 voxelPosition)
         {
             return Mathf.FloorToInt(biome.TerrainHeight * NoiseModel.Get2DPerlin(new Vector2(voxelPosition.x, voxelPosition.z), 0, biome.TerrainScale)) + biome.SolidGroundHeight;
-        }
-
-        private void Update()
-        {
-            playerChunkCoord = GetChunkCoordFromVector3(player.position);
-            // Only update the chunks if the player has moved from the chunk they were previously on.
-            //if (!playerChunkCoord.Equals(playerLastChunkCoord))
-            //    CheckViewDistance();
-        }
+        }        
 
         private ChunkCoord GetChunkCoordFromVector3(Vector3 pos)
         {
@@ -124,24 +195,7 @@ namespace Assets.Scripts.Controllers
                 Chunks[chunkCoord.X, chunkCoord.Z].IsActive = false;
             }
         }
-        */
-
-        public bool CheckForVoxel(float x, float y, float z)
-        {
-            int xCheck = Mathf.FloorToInt(x);
-            int yCheck = Mathf.FloorToInt(y);
-            int zCheck = Mathf.FloorToInt(z);
-            int xChunk = xCheck / VoxelModel.ChunkWidth;
-            int zChunk = zCheck / VoxelModel.ChunkWidth;
-            xCheck -= (xChunk * VoxelModel.ChunkWidth);
-            zCheck -= (zChunk * VoxelModel.ChunkWidth);
-            return Blocktypes[chunks[xChunk, zChunk].VoxelMap[xCheck, yCheck, zCheck]].IsSolid;
-        }
-
-        public bool CheckForVoxel(Vector3 position)
-        {
-            return CheckForVoxel(position.x, position.y, position.z);
-        }
+        */        
 
         private bool IsChunkInWorld(ChunkCoord coord)
         {
@@ -151,23 +205,7 @@ namespace Assets.Scripts.Controllers
         private bool IsVoxelInWorld(Vector3 pos)
         {
             return (pos.x >= 0 && pos.x < VoxelModel.WorldSizeInVoxels && pos.y >= 0 && pos.y < VoxelModel.ChunkHeight && pos.z >= 0 && pos.z < VoxelModel.WorldSizeInVoxels);
-        }
-
-        internal void GenerateWorld()
-        {
-            for (int x = (VoxelModel.WorldSizeInChunks / 2) - VoxelModel.ViewDistanceInChunks; x < (VoxelModel.WorldSizeInChunks / 2) + VoxelModel.ViewDistanceInChunks; x++) {
-                for (int z = (VoxelModel.WorldSizeInChunks / 2) - VoxelModel.ViewDistanceInChunks; z < (VoxelModel.WorldSizeInChunks / 2) + VoxelModel.ViewDistanceInChunks; z++) {
-                    CreateNewChunk(x, z);
-                }
-            }
-            player.position = spawnPosition;
-        }
-
-        public void CreateNewChunk(int x, int z)
-        {
-            Chunks[x, z] = new ChunkModel(new ChunkCoord(x, z), this);
-            ActiveChunks.Add(new ChunkCoord(x, z));
-        }
+        }        
 
         public Material Material
         {
@@ -189,5 +227,10 @@ namespace Assets.Scripts.Controllers
             get => blocktypes;
             set => blocktypes = value;
         }
+        public bool IsReady
+        {
+            get;
+            internal set;
+        } = false;
     }
 }

@@ -1,17 +1,34 @@
 ﻿using Assets.Scripts.Controllers;
 using Assets.Scripts.Models;
+using Assets.Scripts.Utilities;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using static Assets.Scripts.Controllers.Factories.BlockTypesFactory;
 
+[Serializable]
 public class PlayerModel : MonoBehaviour 
 {
 
-    private bool isGrounded;
-    private bool isSprinting;
+    [SerializeField] private GameObject debugScreen;
+    [SerializeField] private GameObject inventory;
+    [SerializeField] private GameObject menu;
+    [SerializeField] private ToolbarModel toolbar;
+    [SerializeField] private Transform destroyCursorBlock;
+    [SerializeField] private Transform placeCursorBlock;
+    [SerializeField] private KeyCode menuKeyCode = KeyCode.F1;
+    [SerializeField] private KeyCode debugScreenKeyCode = KeyCode.F3;
+    [SerializeField] private KeyCode inventoryKeyCode = KeyCode.I;
+    [SerializeField] private GameObject saveZone;
+    [SerializeField] private GameObject loadZone;
     private Transform cam;
     private ChunksController chunksController;
+    private GameSettingModel gameSettings;
+    private Dictionary<KeyCode, Action> inputActions = new Dictionary<KeyCode, Action>();    
+    private Vector3 velocity;    
+    private bool isGrounded;
+    private bool isSprinting;    
     private float walkSpeed = 3f;
     private float sprintSpeed = 6f;
     private float jumpForce = 5f;
@@ -20,16 +37,14 @@ public class PlayerModel : MonoBehaviour
     private float horizontal;
     private float vertical;
     private float mouseHorizontal;
-    private float mouseVertical;
-    private Vector3 velocity;
-    private float verticalMomentum = 0;    
-    private GameSettingModel gameSettings;
-    private Dictionary<KeyCode, Action> inputActions = new Dictionary<KeyCode, Action>();
-    private bool inUI = false;
+    private float mouseVertical;    
+    private float verticalMomentum = 0;        
+    private bool inUI = false;    
 
     private void Awake()
     {
         gameSettings = new GameSettingModel();
+        Cursor.lockState = CursorLockMode.Locked;
         MakeInputActions();
     }
 
@@ -39,32 +54,30 @@ public class PlayerModel : MonoBehaviour
     }
 
     private void Start() 
-    {
+    {        
         cam = GameObject.Find("Main Camera").transform;
         chunksController = GameObject.Find("Chunks").GetComponent<ChunksController>();
     }
 
     private void FixedUpdate()
-    {        
-        CalculateVelocity();        
-        transform.Rotate(Vector3.up * mouseHorizontal);
-        cam.Rotate(Vector3.right * -mouseVertical);
-        transform.Translate(velocity, Space.World);
+    {
+        if (!InUI && chunksController.IsReady) {
+            CalculateVelocity();
+            transform.Rotate(Vector3.up * mouseHorizontal);
+            cam.Rotate(Vector3.right * -mouseVertical);
+            transform.Translate(velocity, Space.World);
+        }        
     }
 
     private void Update() 
     {
-        if (!InUI) {            
+        if (!InUI && chunksController.IsReady) {            
             UpdateAxis();
-            ExecuteMouseAction();
-            CheckIfPlayerIsSprinting();          
+            RightClick();
+            CheckIfPlayerIsSprinting();
+            UpdateCursorBlocksPosition();
         }
-    }
-
-    private void ExecuteMouseAction()
-    {        
         LeftClick();
-        RightClick();        
     }
 
     private void CheckIfPlayerIsSprinting()
@@ -89,22 +102,85 @@ public class PlayerModel : MonoBehaviour
     private void MakeInputActions()
     {
         inputActions.Add(KeyCode.Space, Jump);
-        inputActions.Add(KeyCode.I, HandleMenu);
-        inputActions.Add(KeyCode.Escape, Quit);
-        inputActions.Add(KeyCode.F3, HandleDebugScreen);
-    }
+        inputActions.Add(inventoryKeyCode, HandleInventory);
+        inputActions.Add(menuKeyCode, HandleMenu);        
+        inputActions.Add(debugScreenKeyCode, HandleDebugScreen);
+        inputActions.Add(KeyCode.F12, Quit);
+    }    
 
     private void LeftClick()
     {
         if (Input.GetMouseButtonDown(0)) {
-            //world.DestroyHighlightBlock(highlightBlock);
+            if (!InUI) {
+                HandleBlockDestruction();
+            }
         }
+    }    
+
+    private void HandleBlockDestruction()
+    {        
+            var blockType = chunksController.TryDestroyingBlock(Vector.ToInt(destroyCursorBlock.position));
+            if (blockType != BlockTypeKey.Air) {
+                AddBlockTopPlayer(blockType);
+            }        
     }
 
     private void RightClick()
     {
         if (Input.GetMouseButtonDown(1)) {
-            //PlaceItemInToolbar();
+            if (toolbar.Slots[toolbar.slotIndex].HasItem) {
+                var blockType = toolbar.Slots[toolbar.slotIndex].itemSlot.stack.blockType;
+                chunksController.TryAddingBlock(Vector.FloorToInt(placeCursorBlock.position), blockType);                
+                toolbar.Slots[toolbar.slotIndex].itemSlot.Take(1);
+            }
+        }
+    }   
+
+    private void AddBlockTopPlayer(BlockTypeKey blockType)
+    {
+        //todo handle this logic somewhere else                
+        //todo change this logic to support multi stack
+        if (toolbar.HasEmptyOrAddableSameItem(blockType)) {
+            toolbar.AddBlock(blockType);
+        } else {
+            throw new NotImplementedException();
+            //todo handle on full inventory drop animation
+        }
+    }
+
+    //todo refactor
+    private void UpdateCursorBlocksPosition()
+    {        
+        float checkIncrement = 0.1f;
+        float reach = 8f;
+        float step = checkIncrement;
+        Vector3 lastPosition = new Vector3();
+        while (step < reach) {
+            Vector3 position = cam.position + (cam.forward * step);
+            if (chunksController.CheckForVoxel(position)) {                
+                destroyCursorBlock.position = Vector.FloorToInt(position);
+                placeCursorBlock.position = lastPosition;
+                destroyCursorBlock.gameObject.SetActive(true);
+                placeCursorBlock.gameObject.SetActive(true);
+                return;
+            }
+            lastPosition = Vector.FloorToInt(position);
+            step += checkIncrement;
+        }
+        destroyCursorBlock.gameObject.SetActive(false);
+        placeCursorBlock.gameObject.SetActive(false);
+    }
+
+    private void SwitchInUI()
+    {
+        InUI = !InUI;
+        if (!Cursor.visible && InUI) {
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.Confined;
+        }
+        if (!InUI) {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
         }
     }
 
@@ -118,8 +194,25 @@ public class PlayerModel : MonoBehaviour
 
     private void HandleMenu()
     {
-        if (Input.GetKeyDown(KeyCode.I)) {
-            InUI = !InUI;
+        //todo handle this better
+        if (inventory.activeSelf) {
+            inventory.SetActive(false);
+        }        
+        if (Input.GetKeyDown(menuKeyCode)) {
+            SwitchInUI();
+            menu.SetActive(!menu.activeSelf);            
+        }
+    }
+
+    private void HandleInventory()
+    {
+        if (inventory.activeSelf) {
+            menu.SetActive(false);
+        }
+        if (Input.GetKeyDown(inventoryKeyCode)) {
+            SwitchInUI();
+            //todo
+            //inventory.SetActive(!inventory.activeSelf);
         }
     }
 
@@ -130,8 +223,8 @@ public class PlayerModel : MonoBehaviour
 
     private void HandleDebugScreen()
     {
-        if (Input.GetKeyDown(KeyCode.F3)) {
-            //debugScreen.SetActive(!debugScreen.activeSelf);
+        if (Input.GetKeyDown(debugScreenKeyCode)) {
+            debugScreen.SetActive(!debugScreen.activeSelf);
         }
     }
 
@@ -183,7 +276,7 @@ public class PlayerModel : MonoBehaviour
 
     private float CheckDownSpeed(float downSpeed)
     {
-        var playerWidth = width;
+        var playerWidth = width;    
         bool CheckForVexel1 = chunksController.CheckForVoxel(transform.position.x - playerWidth, transform.position.y + downSpeed, transform.position.z - playerWidth);
         bool CheckForVexel2 = chunksController.CheckForVoxel(transform.position.x + playerWidth, transform.position.y + downSpeed, transform.position.z - playerWidth);
         bool CheckForVexel3 = chunksController.CheckForVoxel(transform.position.x + playerWidth, transform.position.y + downSpeed, transform.position.z + playerWidth);

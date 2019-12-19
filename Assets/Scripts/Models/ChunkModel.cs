@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using static Assets.Scripts.Controllers.Factories.BlockTypesFactory;
 
+[Serializable]
 public class ChunkModel
 {
 
@@ -29,6 +30,102 @@ public class ChunkModel
         CreateMesh();
     }
 
+    public BlockTypeKey EditVoxelAtPosition(Vector3Int voxelPosition, BlockTypeKey blockType)
+    {
+        voxelPosition.x -= Mathf.FloorToInt(chunkObject.transform.position.x);
+        voxelPosition.z -= Mathf.FloorToInt(chunkObject.transform.position.z);
+        var blockTypeAtPosition = VoxelMap[voxelPosition.x, voxelPosition.y, voxelPosition.z];
+        if (blockTypeAtPosition != BlockTypeKey.Bedrock) {
+            VoxelMap[voxelPosition.x, voxelPosition.y, voxelPosition.z] = blockType;
+            UpdateSurroundingVoxels(voxelPosition.x, voxelPosition.y, voxelPosition.z);
+            UpdateChunk();
+            return blockTypeAtPosition;
+        }
+        return BlockTypeKey.Air;
+    }
+
+    //todo fix visual bug
+    void UpdateSurroundingVoxels(int x, int y, int z)
+    {
+        Vector3 voxel = new Vector3(x, y, z);
+        LoopThroughFaces((faceIndex) => {
+            Vector3 currentVoxel = voxel + VoxelModel.faceChecks[faceIndex];
+            if (!IsVoxelInChunk((int) currentVoxel.x, (int) currentVoxel.y, (int) currentVoxel.z)) {
+                chunksController.GetChunkFromVector3(currentVoxel + Position).UpdateChunk();
+            }
+        });
+    }
+
+    //todo refactor
+    private void UpdateChunk()
+    {
+        ClearMeshData();
+        LoopThroughChunks((x, y, z) => {
+            if (chunksController.Blocktypes[voxelMap[x, y, z]].IsSolid) {
+                UpdateMeshData(new Vector3(x, y, z));
+            }
+        });        
+        CreateMesh();
+    }
+
+    //todo refactor
+    private void UpdateMeshData(Vector3 position)
+    {
+        LoopThroughFaces((faceIndex) => {
+            if (!CheckVoxel(position + VoxelModel.faceChecks[faceIndex])) {                
+                var blockType = GetBlockTypeAtPosition(position);
+                AddFaceVoxelVertices(position, faceIndex);
+                AddTexture(chunksController.Blocktypes[blockType].GetTextureID(faceIndex));
+                AddVertexTriangles();
+                vertexIndex += 4;
+            }
+        });        
+    }
+
+    private BlockTypeKey GetBlockTypeAtPosition(Vector3 position)
+    {        
+        return voxelMap[(int) position.x, (int) position.y, (int) position.z];
+    }
+
+    private BlockTypeKey GetBlockTypeAtPosition(Vector3Int position)
+    {
+        return voxelMap[position.x, position.y, position.z];
+    }
+
+    private void AddFaceVoxelVertices(Vector3 position, int faceIndex)
+    {
+        vertices.Add(position + VoxelModel.voxelVerts[VoxelModel.voxelTris[faceIndex, 0]]);
+        vertices.Add(position + VoxelModel.voxelVerts[VoxelModel.voxelTris[faceIndex, 1]]);
+        vertices.Add(position + VoxelModel.voxelVerts[VoxelModel.voxelTris[faceIndex, 2]]);
+        vertices.Add(position + VoxelModel.voxelVerts[VoxelModel.voxelTris[faceIndex, 3]]);
+    }
+
+    private void AddVertexTriangles()
+    {
+        triangles.Add(vertexIndex);
+        triangles.Add(vertexIndex + 1);
+        triangles.Add(vertexIndex + 2);
+        triangles.Add(vertexIndex + 2);
+        triangles.Add(vertexIndex + 1);
+        triangles.Add(vertexIndex + 3);
+    }
+
+    private void ClearMeshData()
+    {
+        vertexIndex = 0;
+        vertices.Clear();
+        triangles.Clear();
+        uvs.Clear();
+    }
+
+    private Vector3Int GetVoxelAtCursorPosition(Vector3 position)
+    {
+        int x = Mathf.FloorToInt(position.x) - Mathf.FloorToInt(chunkObject.transform.position.x);
+        int y = Mathf.FloorToInt(position.y);
+        int z = Mathf.FloorToInt(position.z) - Mathf.FloorToInt(chunkObject.transform.position.z);        
+        return new Vector3Int(x, y, z);
+    }
+
     private void CreateChunkObject()
     {
         chunkObject = new GameObject();
@@ -40,11 +137,18 @@ public class ChunkModel
         chunkObject.name = "Chunk " + this.coord.x + ", " + this.coord.z;        
     }
 
+    private void LoopThroughFaces(Action<int> action)
+    {
+        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+            action(faceIndex);
+        }
+    }
+
     private void LoopThroughChunks(Action<int, int, int> action)
     {
-        for (int y = 0; y < VoxelModel.ChunkHeight; y++) {
-            for (int x = 0; x < VoxelModel.ChunkWidth; x++) {
-                for (int z = 0; z < VoxelModel.ChunkWidth; z++) {
+        for (int y = 0; y < VoxelModel.ChunkHeight; ++y) {
+            for (int x = 0; x < VoxelModel.ChunkWidth; ++x) {
+                for (int z = 0; z < VoxelModel.ChunkWidth; ++z) {
                     action(x, y, z);
                 }
             }
@@ -85,11 +189,11 @@ public class ChunkModel
 
     private void AddVoxelDataToChunk(Vector3 position)
     {
-        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+        LoopThroughFaces((faceIndex) => {
             if (!CheckVoxel(position + VoxelModel.faceChecks[faceIndex])) {
-                CreateVoxelFromChunkPosition(position, faceIndex);                
+                CreateVoxelFromChunkPosition(position, faceIndex);
             }
-        }
+        });
     }
 
     private void CreateVoxelFromChunkPosition(Vector3 position, int faceIndex)
@@ -121,10 +225,11 @@ public class ChunkModel
 
     private void CreateMesh()
     {
-        Mesh mesh = new Mesh();
-        mesh.vertices = Vertices.ToArray();
-        mesh.triangles = Triangles.ToArray();
-        mesh.uv = Uvs.ToArray();
+        Mesh mesh = new Mesh {
+            vertices = Vertices.ToArray(),
+            triangles = Triangles.ToArray(),
+            uv = Uvs.ToArray()
+        };
         mesh.RecalculateNormals();
         MeshFilter.mesh = mesh;
     }
@@ -183,6 +288,7 @@ public class ChunkModel
     }
 }
 
+[Serializable]
 public class ChunkCoord
 {
 

@@ -1,8 +1,11 @@
 ﻿using Assets.Scripts.Controllers;
+using Assets.Scripts.Controllers.Factories;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using static Assets.Scripts.Controllers.Factories.BlockTypesFactory;
 
 public class UIItemSlotModel: MonoBehaviour
 {
@@ -19,10 +22,10 @@ public class UIItemSlotModel: MonoBehaviour
         chunksController = GameObject.Find("Chunks").GetComponent<ChunksController>();
     }
 
-    public bool HasItem
+    private void OnDestroy()
     {
-        get {
-            return itemSlot == null ? false : itemSlot.HasItem;
+        if (itemSlot != null) {
+            itemSlot.unLinkUISlot();
         }
     }
 
@@ -48,7 +51,7 @@ public class UIItemSlotModel: MonoBehaviour
             slotAmount.text = itemSlot.stack.amount.ToString();
             slotIcon.enabled = true;
             slotAmount.enabled = true;
-        } else {
+        } else if (slotIcon != null) {
             Clear();
         }
     }
@@ -61,13 +64,23 @@ public class UIItemSlotModel: MonoBehaviour
         slotAmount.enabled = false;
     }
 
-    private void OnDestroy()
+    internal void AddAmount(int value, BlockTypeKey blockType)
     {
-        if (itemSlot != null) {
-            itemSlot.unLinkUISlot();
-        }
+        if (itemSlot.stack != null) {
+            itemSlot.stack.amount += value;
+            UpdateSlot();
+        } else {               
+            itemSlot.stack = new ItemStackModel(blockType, 1);
+            UpdateSlot();            
+        }        
     }
 
+    public bool HasItem
+    {
+        get {
+            return itemSlot == null ? false : itemSlot.HasItem;
+        }
+    }         
 }
 
 public class ItemSlot
